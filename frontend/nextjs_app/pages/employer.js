@@ -5,21 +5,26 @@ const fetcher = (url) => fetch(url).then((r) => r.json());
 
 export default function Employer() {
   const [form, setForm] = useState({ name: "", email: "", title: "", description: "" });
+  const BACKEND = "http://127.0.0.1:8000";
+
   const createEmployer = async () => {
-    await fetch("/api/employer/register", {
+    const res = await fetch(`${BACKEND}/api/employer/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: form.name, email: form.email, profile: "" })
     });
-    alert("Employer created");
+    const data = await res.json();
+    alert("Employer created: " + JSON.stringify(data));
   };
+
   const postJob = async () => {
-    await fetch("/employer/post_job", {
+    const res = await fetch(`${BACKEND}/api/employer/post_job`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employer_id: 1, title: form.title, description: form.description })
     });
-    alert("Job posted (dev endpoint)");
+    const data = await res.json();
+    alert("Job posted: " + JSON.stringify(data));
   };
   return (
     <div style={{ padding: 24 }}>

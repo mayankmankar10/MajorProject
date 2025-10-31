@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routes import employer_routes, employee_routes, onboarding_routes
 from backend.agents.scheduler_agent import SchedulerAgent  # if added
 from backend.db.vector_db import init_vector_store
+from backend.db.sql_db import init_sql_db
 from backend.routes import scheduler
 
 app = FastAPI(title="Manpower Connector Backend")
 
-# Initialize vector DB (Chroma)
+# Initialize persistence layers (SQL + vector DB)
+init_sql_db()
 init_vector_store()
 
 # Allow frontend access

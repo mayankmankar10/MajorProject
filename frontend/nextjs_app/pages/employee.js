@@ -4,8 +4,10 @@ import { useState } from "react";
 export default function Employee() {
   const [form, setForm] = useState({ name: "", email: "", resume_text: "" });
 
+  const BACKEND = "http://127.0.0.1:8000";
+
   const register = async () => {
-    const res = await fetch("/employee/register", {
+    const res = await fetch(`${BACKEND}/api/employee/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form)
@@ -15,7 +17,7 @@ export default function Employee() {
   };
 
   const discover = async () => {
-    const res = await fetch("/employee/discover", {
+    const res = await fetch(`${BACKEND}/api/employee/discover`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: form.resume_text, k: 5 })
