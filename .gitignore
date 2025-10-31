@@ -15,6 +15,24 @@ build/
 *.db
 *.sqlite3
 .env
+*.log
+
+# Virtual environments
+env/
+venv/
+ENV/
+VENV/
+
+# Database files
+manpower.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Vector database
+vectors/
+chroma/
+*.index
 
 # Node.js
 node_modules/
@@ -22,6 +40,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
+yarn.lock
 
 # IDEs and editors
 .vscode/
@@ -29,6 +49,28 @@ yarn-error.log*
 *.swp
 *.swo
 .DS_Store
+*.code-workspace
 
 # OS-specific
-Thumbs.db
+Thums.db
+.DS_Store
+
+# Logs
+*.log
+logs/
+smartserve.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Temporary files
+*.tmp
+*.temp
+~*
