@@ -15,6 +15,7 @@ build/
 *.db
 *.sqlite3
 .env
+.env.example
 *.log
 
 # Virtual environments
