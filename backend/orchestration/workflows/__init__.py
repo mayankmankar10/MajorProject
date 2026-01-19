@@ -57,7 +57,7 @@ EMPLOYEE_APPLICATION_WORKFLOW = {
     "steps": [
         {"tool": "ResumeParserTool", "description": "Parse resume"},
         {"tool": "EmbeddingGenerator", "description": "Generate profile embeddings"},
-        {"tool": "ApplicationTool", "description": "Submit application"},
+        {"tool": "JobApplicationTool", "description": "Submit application"},
         {"tool": "NotificationTool", "description": "Confirm submission"}
     ]
 }

@@ -1,7 +1,7 @@
-# FastAPI & Web Server
-fastapi==0.109.0
+﻿# FastAPI & Web Server
+fastapi
 uvicorn[standard]==0.27.0
-websockets==12.0
+websockets==15.0.1
 python-multipart==0.0.6
 
 # Database
@@ -10,36 +10,46 @@ alembic==1.13.1
 psycopg2-binary==2.9.9
 
 # LangChain & AI
-langchain==0.1.6
-langchain-openai==0.0.5
-langchain-chroma==0.1.0
-langchain-community==0.0.20
-openai==1.12.0
-chromadb==0.4.22
+langchain
+langchain-openai
+langchain-chroma
+langchain-community
+langchain-google-genai
+langchain-ollama
+langchain-huggingface
+langgraph
+langgraph-checkpoint
+langgraph-prebuilt
+langsmith
+openai
+chromadb
+google-generativeai
+google-genai
+ollama
 
 # NLP & ML
-spacy==3.7.2
-sentence-transformers==2.3.1
-transformers==4.37.2
-numpy==1.26.3
-pandas==2.2.0
+spacy>=3.7.2
+sentence-transformers>=2.3.1
+transformers>=4.34.0
+numpy>=1.26.3,<2.0.0
+pandas>=2.2.0
 
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.1
-cryptography==42.0.2
+cryptography<43,>=41.0.5
 
 # Validation & Utilities
-pydantic==2.6.0
-pydantic-settings==2.1.0
+pydantic
+pydantic-settings==2.11.0
 email-validator==2.1.0
 
 # Testing
-pytest==8.0.0
+pytest==7.4.4
 pytest-asyncio==0.23.4
 pytest-cov==4.1.0
-httpx==0.26.0
+httpx
 
 # Development Tools
 black==24.1.1
@@ -50,7 +60,12 @@ isort==5.13.2
 # Logging & Monitoring
 python-json-logger==2.0.7
 
-# Optional (for demo)
-streamlit==1.31.0
-reportlab==4.0.9
+# Scheduling
+APScheduler==3.11.1
+schedule==1.2.2
 
+# Optional (for demo)
+streamlit>=1.31.0
+reportlab==4.0.9
+pillow<11,>=7.1.0
+protobuf<5,>=3.20

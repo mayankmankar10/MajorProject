@@ -50,6 +50,7 @@ class AgentDispatcher:
         self,
         user_input: str,
         user_role: str,
+        user_id: int,  # Add user_id parameter
         session_id: str,
         chat_history: List[Dict[str, str]] = None
     ) -> Dict[str, Any]:
@@ -59,6 +60,7 @@ class AgentDispatcher:
         Args:
             user_input: Natural language command
             user_role: "employer" or "employee"
+            user_id: User ID making the request
             session_id: Unique session ID
             chat_history: Previous conversation messages
             
@@ -78,6 +80,7 @@ class AgentDispatcher:
         
         result = await orchestrator.execute(
             user_input=user_input,
+            user_id=user_id,  # Pass user_id to orchestrator
             session_id=session_id,
             chat_history=chat_history
         )

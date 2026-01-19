@@ -28,6 +28,9 @@ class NotificationResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z' if v else None
+        }
 
 
 class MarkReadRequest(BaseModel):
@@ -88,30 +91,46 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
 
 @router.get("/", response_model=List[NotificationResponse])
 def get_notifications(
+    current_user: dict = Depends(get_current_user),
     unread_only: bool = False,
     limit: int = 50,
     offset: int = 0,
-    current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get user's notifications."""
     
-    query = db.query(Notification).filter(Notification.recipient_id == current_user["user_id"])
+    user_id = current_user.get("user_id")
+    query = db.query(Notification).filter(Notification.recipient_id == user_id)
     
     if unread_only:
         query = query.filter(Notification.is_read == False)
     
     notifications = query.order_by(Notification.created_at.desc()).limit(limit).offset(offset).all()
     
-    return notifications
+    # Manually construct response to handle metadata field correctly
+    return [
+        NotificationResponse(
+            id=n.id,
+            title=n.title,
+            message=n.message,
+            notification_type=n.notification_type,
+            action_url=n.action_url,
+            metadata=n.meta_data or {},  # Use meta_data column and default to empty dict
+            is_read=n.is_read,
+            created_at=n.created_at
+        )
+        for n in notifications
+    ]
 
 
 @router.get("/unread-count")
 def get_unread_count(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get count of unread notifications."""
     
+    user_id = current_user.get("user_id")
+    
     count = db.query(Notification).filter(
-        Notification.recipient_id == current_user["user_id"],
+        Notification.recipient_id == user_id,
         Notification.is_read == False
     ).count()
     
@@ -126,10 +145,12 @@ def mark_notifications_read(
 ):
     """Mark notifications as read."""
     
+    user_id = current_user.get("user_id")
+    
     try:
         db.query(Notification).filter(
             Notification.id.in_(request.notification_ids),
-            Notification.recipient_id == current_user["user_id"]
+            Notification.recipient_id == user_id
         ).update(
             {"is_read": True, "read_at": datetime.utcnow()},
             synchronize_session=False
@@ -148,9 +169,11 @@ def mark_notifications_read(
 def mark_all_read(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     """Mark all user's notifications as read."""
     
+    user_id = current_user.get("user_id")
+    
     try:
         updated = db.query(Notification).filter(
-            Notification.recipient_id == current_user["user_id"],
+            Notification.recipient_id == user_id,
             Notification.is_read == False
         ).update(
             {"is_read": True, "read_at": datetime.utcnow()},
@@ -174,9 +197,11 @@ def delete_notification(
 ):
     """Delete a notification."""
     
+    user_id = current_user.get("user_id")
+    
     notification = db.query(Notification).filter(
         Notification.id == notification_id,
-        Notification.recipient_id == current_user["user_id"]
+        Notification.recipient_id == user_id
     ).first()
     
     if not notification:

@@ -28,12 +28,20 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    role: str
+    profile_id: int | None = None  # employee_id or employer_id
+    is_active: bool
+    created_at: datetime
+    last_login: datetime | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user_id: int
-    role: str
-    email: str
+    user: UserResponse
 
 
 class UserProfileResponse(BaseModel):
@@ -100,6 +108,15 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
         
+        # Get profile ID based on role
+        profile_id = None
+        if request.role == UserRole.EMPLOYER:
+            employer = db.query(Employer).filter(Employer.user_id == user.id).first()
+            profile_id = employer.id if employer else None
+        elif request.role == UserRole.EMPLOYEE:
+            employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+            profile_id = employee.id if employee else None
+        
         # Create access token
         token_data = {
             "user_id": user.id,
@@ -108,13 +125,19 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         }
         access_token = create_access_token(token_data)
         
-        logger.info(f"New user registered: {user.email} as {user.role.value}")
+        logger.info(f"New user registered: {user.email} as {user.role.value} (profile_id={profile_id})")
         
         return TokenResponse(
             access_token=access_token,
-            user_id=user.id,
-            role=user.role.value,
-            email=user.email
+            user=UserResponse(
+                id=user.id,
+                email=user.email,
+                role=user.role.value,
+                profile_id=profile_id,
+                is_active=user.is_active,
+                created_at=user.created_at,
+                last_login=user.last_login
+            )
         )
     
     except Exception as e:
@@ -145,6 +168,15 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     user.last_login = datetime.utcnow()
     db.commit()
     
+    # Get profile ID based on role
+    profile_id = None
+    if user.role == UserRole.EMPLOYER:
+        employer = db.query(Employer).filter(Employer.user_id == user.id).first()
+        profile_id = employer.id if employer else None
+    elif user.role == UserRole.EMPLOYEE:
+        employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+        profile_id = employee.id if employee else None
+    
     # Create access token
     token_data = {
         "user_id": user.id,
@@ -153,13 +185,19 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     }
     access_token = create_access_token(token_data)
     
-    logger.info(f"User logged in: {user.email}")
+    logger.info(f"User logged in: {user.email} (profile_id={profile_id})")
     
     return TokenResponse(
         access_token=access_token,
-        user_id=user.id,
-        role=user.role.value,
-        email=user.email
+        user=UserResponse(
+            id=user.id,
+            email=user.email,
+            role=user.role.value,
+            profile_id=profile_id,
+            is_active=user.is_active,
+            created_at=user.created_at,
+            last_login=user.last_login
+        )
     )
 
 

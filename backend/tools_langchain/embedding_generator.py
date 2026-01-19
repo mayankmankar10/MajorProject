@@ -1,8 +1,8 @@
 # backend/tools_langchain/embedding_generator.py
 from langchain.tools import BaseTool
 from langchain_openai import OpenAIEmbeddings
-from typing import Type
-from pydantic import BaseModel, Field
+from typing import Type, Any
+from pydantic import BaseModel, Field, ConfigDict
 import os
 import json
 import logging
@@ -32,9 +32,12 @@ class EmbeddingGenerator(BaseTool):
     Use this when you need to create embeddings for semantic search or matching.
     """
     args_schema: Type[BaseModel] = EmbeddingGeneratorInput
+    embeddings: Any = Field(default=None, exclude=True)
     
-    def __init__(self):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.embeddings = OpenAIEmbeddings(
             model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large"),
             api_key=os.getenv("OPENAI_API_KEY")

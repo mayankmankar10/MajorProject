@@ -15,8 +15,9 @@ build/
 *.db
 *.sqlite3
 .env
-.env.example
 *.log
+.mypy_cache/
+.ruff_cache/
 
 # Virtual environments
 env/
@@ -29,6 +30,7 @@ manpower.db
 *.db
 *.sqlite
 *.sqlite3
+*.db-journal
 
 # Vector database
 vectors/
@@ -45,7 +47,9 @@ package-lock.json
 yarn.lock
 
 # IDEs and editors
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
@@ -53,8 +57,7 @@ yarn.lock
 *.code-workspace
 
 # OS-specific
-Thums.db
-.DS_Store
+Thumbs.db
 
 # Logs
 *.log

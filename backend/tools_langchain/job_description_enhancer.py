@@ -1,8 +1,8 @@
 # backend/tools_langchain/job_description_enhancer.py
 from langchain.tools import BaseTool
 from langchain_openai import ChatOpenAI
-from typing import Type
-from pydantic import BaseModel, Field
+from typing import Type, Any
+from pydantic import BaseModel, Field, ConfigDict
 import os
 import json
 import logging
@@ -34,9 +34,12 @@ class JobDescriptionEnhancer(BaseTool):
     Use this when posting a new job or improving an existing job description.
     """
     args_schema: Type[BaseModel] = JobDescriptionEnhancerInput
+    llm: Any = Field(default=None, exclude=True)
     
-    def __init__(self):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.llm = ChatOpenAI(
             model=os.getenv("OPENAI_MODEL_ENHANCEMENT", "gpt-4-turbo"),
             temperature=0.5,

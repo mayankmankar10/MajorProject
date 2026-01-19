@@ -2,13 +2,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.routes import (
     auth_routes,
+    registration_routes,
     notification_routes,
     employer_routes,
     employee_routes,
     onboarding_routes,
     scheduler,
     analytics_routes,
-    tool_routes
+    tool_routes,
+    interview_routes,
+    offer_routes,
+    bulk_hire_routes
 )
 from backend.chat import router as chat_router
 from backend.db.vector_db import init_vector_store
@@ -70,6 +74,7 @@ async def health_check():
 
 # Register routes
 app.include_router(auth_routes.router)
+app.include_router(registration_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(employer_routes.router, prefix="/api/employer", tags=["Employer"])
 app.include_router(employee_routes.router, prefix="/api/employee", tags=["Employee"])
@@ -77,6 +82,9 @@ app.include_router(onboarding_routes.router, prefix="/api/onboarding", tags=["On
 app.include_router(scheduler.router, prefix="/api/scheduler", tags=["Scheduler"])
 app.include_router(analytics_routes.router, tags=["Analytics"])
 app.include_router(tool_routes.router)
+app.include_router(interview_routes.router)
+app.include_router(offer_routes.router)
+app.include_router(bulk_hire_routes.router, prefix="/api/bulk-hire", tags=["Bulk Hire"])
 app.include_router(chat_router)
 
 # Startup event
@@ -116,7 +124,24 @@ async def startup_event():
         logger.info(f"   - Employer tools: {len(employer_tools)}")
         logger.info(f"   - Employee tools: {len(employee_tools)}")
     except Exception as e:
+        import traceback
         logger.error(f"❌ Orchestration initialization failed: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+    
+    # Initialize background job scheduler
+    try:
+        from backend.background_jobs import init_scheduler, run_startup_analysis
+        init_scheduler()
+        logger.info("✅ Background job scheduler started")
+        logger.info("   - Nightly profile analysis: 00:00")
+        logger.info("   - Weekly cache cleanup: Sunday 02:00")
+        
+        # Run INCREMENTAL startup sync (only new profiles)
+        logger.info("🔍 Running incremental startup sync...")
+        from backend.background_jobs import run_incremental_startup_sync
+        await run_incremental_startup_sync()
+    except Exception as e:
+        logger.error(f"❌ Background job scheduler initialization failed: {e}")
     
     # Log configuration
     logger.info(f"Frontend URL: {frontend_url}")
@@ -128,3 +153,11 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown."""
     logger.info("👋 Shutting down SmartServe application")
+    
+    # Shutdown background jobs
+    try:
+        from backend.background_jobs import shutdown_scheduler
+        shutdown_scheduler()
+        logger.info("✅ Background job scheduler stopped")
+    except Exception as e:
+        logger.error(f"⚠️  Background job scheduler shutdown error: {e}")

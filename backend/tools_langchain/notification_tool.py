@@ -1,15 +1,61 @@
 # backend/tools_langchain/notification_tool.py
 from langchain.tools import BaseTool
-from typing import Type
-from pydantic import BaseModel, Field
+from typing import Type, Any, Optional
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.orm import Session
 from backend.db.sql_db import get_db
-from backend.db.models import Notification
+from backend.db.models import Notification, User, Employee, Employer
 from backend.notifications.connection_manager import manager
 import json
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_to_user_id(db: Session, provided_id: int) -> int:
+    """
+    INTELLIGENT ID RESOLUTION - Auto-detects and resolves any ID to correct user_id.
+    
+    This prevents the common bug where application_id (6) or employee_id (53) 
+    is mistakenly used instead of user_id (255).
+    
+    Resolution order:
+    1. Check if it's already a valid user_id
+    2. Check if it's an employee_id and resolve to user_id
+    3. Check if it's an employer_id and resolve to user_id
+    4. Return original if nothing matches (let database FK catch it)
+    """
+    # Step 1: Check if already a valid user_id
+    user = db.query(User).filter(User.id == provided_id).first()
+    if user:
+        logger.debug(f"ID {provided_id} is already a valid user_id")
+        return provided_id
+    
+    # Step 2: Check if it's an employee_id
+    employee = db.query(Employee).filter(Employee.id == provided_id).first()
+    if employee:
+        logger.warning(
+            f"⚠️ ID CORRECTION: Received employee_id={provided_id}, "
+            f"auto-resolved to user_id={employee.user_id} ({employee.full_name})"
+        )
+        return employee.user_id
+    
+    # Step 3: Check if it's an employer_id
+    employer = db.query(Employer).filter(Employer.id == provided_id).first()
+    if employer:
+        logger.warning(
+            f"⚠️ ID CORRECTION: Received employer_id={provided_id}, "
+            f"auto-resolved to user_id={employer.user_id} ({employer.company_name})"
+        )
+        return employer.user_id
+    
+    # Step 4: ID not found anywhere - log error but return anyway
+    # The database FK constraint will catch this
+    logger.error(
+        f"❌ ID {provided_id} not found in users, employees, or employers tables! "
+        f"This notification will likely fail."
+    )
+    return provided_id
 
 class NotificationToolInput(BaseModel):
     """Input schema for NotificationTool."""
@@ -39,6 +85,12 @@ class NotificationTool(BaseTool):
     Use this to notify users about important events, matches, interviews, etc.
     """
     args_schema: Type[BaseModel] = NotificationToolInput
+
+    llm: Any = Field(default=None, exclude=True)
+
+    
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def _run(
         self,
@@ -52,9 +104,14 @@ class NotificationTool(BaseTool):
         try:
             db: Session = next(get_db())
             
-            # Create notification in database
+            # INTELLIGENT ID RESOLUTION - Auto-correct wrong IDs
+            resolved_user_id = resolve_to_user_id(db, user_id)
+            if resolved_user_id != user_id:
+                logger.info(f"Resolved provided ID {user_id} to user_id {resolved_user_id}")
+            
+            # Create notification in database with RESOLVED user_id
             notification = Notification(
-                recipient_id=user_id,
+                recipient_id=resolved_user_id,  # Use resolved ID!
                 title=title,
                 message=message,
                 notification_type=notification_type,
@@ -116,9 +173,14 @@ class NotificationTool(BaseTool):
         try:
             db: Session = next(get_db())
             
-            # Create notification
+            # INTELLIGENT ID RESOLUTION - Auto-correct wrong IDs
+            resolved_user_id = resolve_to_user_id(db, user_id)
+            if resolved_user_id != user_id:
+                logger.info(f"Resolved provided ID {user_id} to user_id {resolved_user_id}")
+            
+            # Create notification with RESOLVED user_id
             notification = Notification(
-                recipient_id=user_id,
+                recipient_id=resolved_user_id,  # Use resolved ID!
                 title=title,
                 message=message,
                 notification_type=notification_type,
@@ -130,7 +192,7 @@ class NotificationTool(BaseTool):
             db.commit()
             db.refresh(notification)
             
-            # Send via WebSocket
+            # Send via WebSocket with RESOLVED user_id
             notification_data = {
                 "id": notification.id,
                 "title": title,
@@ -140,7 +202,7 @@ class NotificationTool(BaseTool):
                 "created_at": notification.created_at.isoformat()
             }
             
-            await manager.send_personal_message(json.dumps(notification_data), user_id)
+            await manager.send_personal_message(json.dumps(notification_data), resolved_user_id)
             
             result = {
                 "notification_id": notification.id,
