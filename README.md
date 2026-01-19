@@ -324,4 +324,54 @@ For questions or support, please open an issue on GitHub.
 
 ---
 
+## 🐳 Colleague Setup Guide (Docker)
+
+Want to share this project with your team? Each colleague can run their own isolated instance using Docker.
+
+### Quick Setup for Colleagues
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd manpower_connector
+   ```
+
+2. **Create `.env` file** (copy from `.env.example`)
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your own API keys
+   ```
+
+3. **Run with Docker**
+   ```bash
+   docker-compose up -d --build
+   ```
+
+4. **Access application**
+   - Frontend: http://localhost:5173
+   - Backend: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
+
+### First Time Setup
+
+Generate embeddings (required on first run):
+```bash
+# Employee embeddings
+docker-compose exec backend python backend/scripts/migrate_embeddings.py
+
+# Job embeddings
+docker-compose exec backend python regenerate_job_embeddings.py
+```
+
+### Benefits of Docker Setup
+
+- ✅ **Isolated environment** - No conflicts with other setups
+- ✅ **Own database** - Each person gets their own data
+- ✅ **Own API keys** - No rate limit conflicts
+- ✅ **Easy updates** - Just `git pull` and rebuild
+
+For detailed instructions, see [SHARING_GUIDE.md](./SHARING_GUIDE.md)
+
+---
+
 **Built with ❤️ using AI and modern Python technologies**

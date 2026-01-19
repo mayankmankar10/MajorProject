@@ -1,21 +1,50 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: smartserve_redis
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: manpower_backend
     ports:
-      - "6379:6379"
+      - "8000:8000"
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      # Mount existing database to persist data
+      - ./manpower.db:/app/manpower.db
+      # Mount FAISS indexes to persist vector embeddings
+      - ./backend/db/faiss_indexes:/app/backend/db/faiss_indexes
+      # Mount vectors directory if it exists
+      - ./vectors:/app/vectors
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=sqlite:///./manpower.db
+    env_file:
+      - .env
     restart: unless-stopped
+    networks:
+      - manpower_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: manpower_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    restart: unless-stopped
+    networks:
+      - manpower_network
+
+networks:
+  manpower_network:
+    driver: bridge
 
 volumes:
-  redis_data:
-    driver: local
+  # Named volumes for data persistence
+  db_data:
+  vector_data:
