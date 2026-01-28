@@ -13,5 +13,31 @@
             "className\\s*[:=]\\s*['\"`]([^'\"` ]*)['\"`]",
             "([^'\"`]*)"
         ]
-    ]
+    ],
+    "python.analysis.exclude": [
+        "**/venv/**",
+        "**/node_modules/**",
+        "**/__pycache__/**",
+        "**/frontend/node_modules/**",
+        "**/.pytest_cache/**",
+        "**/build/**",
+        "**/dist/**"
+    ],
+    "files.watcherExclude": {
+        "**/venv/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/dist/**": true,
+        "**/build/**": true,
+        "**/*.pyc": true
+    },
+    "search.exclude": {
+        "**/venv/**": true,
+        "**/node_modules/**": true,
+        "**/__pycache__/**": true,
+        "**/dist/**": true,
+        "**/build/**": true
+    }
 }

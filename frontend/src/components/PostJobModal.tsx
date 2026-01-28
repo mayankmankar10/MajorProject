@@ -22,6 +22,8 @@ interface JobFormData {
     job_category: string
     cuisine_type: string
     quantity_needed: number
+    requires_food_safety: boolean
+    requires_alcohol_cert: boolean
 }
 
 const initialFormData: JobFormData = {
@@ -36,6 +38,8 @@ const initialFormData: JobFormData = {
     job_category: '',
     cuisine_type: '',
     quantity_needed: 1,
+    requires_food_safety: true,
+    requires_alcohol_cert: false,
 }
 
 export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -156,10 +160,8 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, onS
             newErrors.quantity_needed = 'At least 1 position is required'
         }
 
-        // Cuisine type required for cook/chef
-        if ((formData.job_category === 'cook' || formData.job_category === 'chef') && !formData.cuisine_type) {
-            newErrors.cuisine_type = 'Cuisine type is required for cook/chef positions'
-        }
+        // Cuisine type is optional for all categories
+        // No validation required
 
         setErrors(newErrors)
         return Object.keys(newErrors).length === 0
@@ -203,7 +205,7 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, onS
         }
     }
 
-    const isCookOrChef = formData.job_category === 'cook' || formData.job_category === 'chef'
+
 
     return (
         <Modal
@@ -270,46 +272,72 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({ isOpen, onClose, onS
                     )}
                 </div>
 
-                {/* Cuisine Type (Conditional) */}
-                {isCookOrChef && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                    >
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                            Cuisine Type <span className="text-danger-600 ml-1">*</span>
-                        </label>
-                        <div className="relative">
-                            <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                            <select
-                                value={formData.cuisine_type}
-                                onChange={(e) => handleInputChange('cuisine_type', e.target.value)}
-                                className={`w-full pl-10 pr-4 py-2 text-base rounded-lg border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-10 ${errors.cuisine_type
-                                    ? 'border-danger-500 focus:border-danger-500'
-                                    : 'border-slate-300 focus:border-primary-500'
-                                    }`}
-                                required
-                            >
-                                <option value="">Select a cuisine...</option>
-                                {cuisineTypes.map((cuisine) => (
-                                    <option key={cuisine.value} value={cuisine.value}>
-                                        {cuisine.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        {errors.cuisine_type && (
-                            <motion.p
-                                initial={{ opacity: 0, y: -4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="text-sm text-danger-600 mt-1"
-                            >
-                                {errors.cuisine_type}
-                            </motion.p>
-                        )}
-                    </motion.div>
-                )}
+                {/* Cuisine Type (Available for all categories) */}
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Cuisine Type
+                    </label>
+                    <div className="relative">
+                        <ChefHat className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <select
+                            value={formData.cuisine_type}
+                            onChange={(e) => handleInputChange('cuisine_type', e.target.value)}
+                            className={`w-full pl-10 pr-4 py-2 text-base rounded-lg border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-10 ${errors.cuisine_type
+                                ? 'border-danger-500 focus:border-danger-500'
+                                : 'border-slate-300 focus:border-primary-500'
+                                }`}
+                        >
+                            <option value="">Select a cuisine...</option>
+                            {cuisineTypes.map((cuisine) => (
+                                <option key={cuisine.value} value={cuisine.value}>
+                                    {cuisine.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {errors.cuisine_type && (
+                        <motion.p
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-sm text-danger-600 mt-1"
+                        >
+                            {errors.cuisine_type}
+                        </motion.p>
+                    )}
+                </div>
+
+                {/* Certification Requirements */}
+                <div className="space-y-3">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Certification Requirements
+                    </label>
+
+                    {/* Food Safety Certification */}
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                        <input
+                            type="checkbox"
+                            checked={formData.requires_food_safety}
+                            onChange={(e) => handleInputChange('requires_food_safety', e.target.checked)}
+                            className="w-5 h-5 rounded border-2 border-slate-300 text-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-opacity-10 cursor-pointer transition-colors"
+                        />
+                        <span className="text-sm text-slate-700 group-hover:text-slate-900">
+                            Requires Food Safety Certification
+                        </span>
+                    </label>
+
+                    {/* Alcohol Certification */}
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                        <input
+                            type="checkbox"
+                            checked={formData.requires_alcohol_cert}
+                            onChange={(e) => handleInputChange('requires_alcohol_cert', e.target.checked)}
+                            className="w-5 h-5 rounded border-2 border-slate-300 text-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-opacity-10 cursor-pointer transition-colors"
+                        />
+                        <span className="text-sm text-slate-700 group-hover:text-slate-900">
+                            Requires Alcohol Service Certification
+                        </span>
+                    </label>
+                </div>
 
                 {/* Skills Input */}
                 <div>

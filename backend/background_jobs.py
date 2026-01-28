@@ -122,189 +122,139 @@ async def cleanup_old_chat_sessions_weekly():
         traceback.print_exc()
 
 async def _generate_initial_embeddings(db: Session):
-    """Generate embeddings for ALL cached profiles (first-time setup)."""
-    from backend.db.models import ProfileCache, Employee
+    """Generate embeddings for ALL employees using structured columns only."""
+    from backend.db.models import Employee
     
-    cached_profiles = db.query(ProfileCache).join(Employee).all()
-    logger.info(f"📦 Generating embeddings for {len(cached_profiles)} cached profiles...")
+    employees = db.query(Employee).all()
+    logger.info(f"📦 Generating embeddings for {len(employees)} employees...")
     
-    if len(cached_profiles) == 0:
-        logger.info("   No profiles to embed")
+    if len(employees) == 0:
+        logger.info("   No employees to embed")
         return
     
-    # Use sync_vectors logic but programmatically
+    # Use structured format matching migrate_embeddings.py
     from backend.db.vector_db import create_vector_store
     from langchain_core.documents import Document
     
     documents = []
-    for cache in cached_profiles:
-        emp = cache.employee
-        skills_str = ", ".join(cache.top_skills) if cache.top_skills else ""
+    for emp in employees:
+        # Build structured profile from database columns only
+        text_parts = []
         
-        # Build rich document text (matching migrate_embeddings.py format)
-        text_parts = [
-            f"Name: {emp.full_name}",
-            f"Skills: {skills_str}" if skills_str else "",
-            f"Experience: {emp.years_in_hospitality or 0} years",
-        ]
+        # Preferred role
+        if emp.preferred_role:
+            text_parts.append(f"Preferred Role: {emp.preferred_role.value}")
         
-        # Add cached profile data
-        if cache.professional_summary:
-            text_parts.append(f"Summary: {cache.professional_summary}")
-        if cache.top_skills:
-            text_parts.append(f"Top Skills: {', '.join(cache.top_skills)}")
-        if cache.recommended_roles:
-            text_parts.append(f"Recommended Roles: {', '.join(cache.recommended_roles)}")
-        if cache.strengths:
-            text_parts.append(f"Strengths: {', '.join(cache.strengths)}")
+        # Skills (technical)
+        if emp.skills:
+            text_parts.append(f"Skills: {', '.join(emp.skills)}")
         
-        # Add resume text (first 500 chars) for better semantic matching
-        if emp.resume_text:
-            text_parts.append(f"Resume: {emp.resume_text[:500]}")
+        # Soft skills
+        if emp.soft_skills:
+            text_parts.append(f"Soft Skills: {', '.join(emp.soft_skills)}")
         
-        page_content = "\n".join([p for p in text_parts if p])
+        # Cuisine experience
+        if emp.cuisine_experience:
+            text_parts.append(f"Cuisine Experience: {', '.join(emp.cuisine_experience)}")
         
-        # Build certifications list
-        certifications = []
-        if emp.food_safety_certified:
-            certifications.append("food_safety")
-        if emp.alcohol_service_certified:
-            certifications.append("alcohol_service")
+        # Shift availability
+        if emp.shift_preferences:
+            text_parts.append(f"Available Shifts: {', '.join(emp.shift_preferences)}")
         
+        content = "\n".join([p for p in text_parts if p])
+        
+        # Skip if no content
+        if not content:
+            logger.warning(f"  ⚠️  Skipping employee {emp.id} ({emp.full_name}) - no structured data")
+            continue
+        
+        # Metadata for filtering and display
         metadata = {
             "id": emp.id,
-            "employee_id": emp.id,  # For tie-breaking
+            "employee_id": emp.id,
             "user_id": emp.user_id,
             "full_name": emp.full_name,
-            "skills": skills_str,
-            "years_in_hospitality": emp.years_in_hospitality or 0,  # For tie-breaking
-            "certifications": certifications,  # For tie-breaking
-            "type": "employee"
+            "type": "employee",
+            # Structured fields for filtering
+            "role": emp.preferred_role.value if emp.preferred_role else None,
+            "years_in_hospitality": emp.years_in_hospitality or 0,
+            "food_safety_certified": emp.food_safety_certified or False,
+            "servsafe_certified": emp.servsafe_certified or False,
+            "alcohol_service_certified": emp.alcohol_service_certified or False,
+            "preferred_location": emp.preferred_location,
+            "certifications": emp.certifications or [],
         }
         
-        documents.append(Document(page_content=page_content, metadata=metadata))
+        documents.append(Document(page_content=content, metadata=metadata))
     
     # Create employee vector store
     vector_store = create_vector_store(documents, index_type="employee")
-    logger.info(f"✅ Generated embeddings for {len(documents)} profiles")
+    logger.info(f"✅ Generated embeddings for {len(documents)} employees (skipped {len(employees) - len(documents)} without data)")
 
-async def _generate_incremental_embeddings(db: Session, vector_store):
-    """Generate embeddings ONLY for profiles not yet in vector store."""
-    from backend.db.models import ProfileCache, Employee
-    
-    # Get all cached profile IDs
-    cached_profile_ids = set(
-        cache.employee_id for cache in db.query(ProfileCache).all()
-    )
-    
-    # Check if vector store has data by inspecting the index directly (no network call needed)
-    try:
-        # FAISS stores have an 'index' attribute with ntotal property
-        if hasattr(vector_store, 'index') and vector_store.index is not None:
-            doc_count = vector_store.index.ntotal
-            if doc_count > 0:
-                logger.info("✅ Vector store loaded from disk with data")
-                logger.info(f"   Documents in vector store: {doc_count}")
-                logger.info(f"   Total cached profiles: {len(cached_profile_ids)}")
-                logger.info("   Skipping regeneration (use existing embeddings)")
-                return
-            else:
-                logger.info("⚠️ Vector store empty - generating all embeddings")
-                await _generate_initial_embeddings(db)
-                return
-        else:
-            logger.info("⚠️ Vector store has no index - generating all embeddings")
-            await _generate_initial_embeddings(db)
-            return
-            
-    except Exception as e:
-        # If we can't check the vector store, log warning but DON'T try to regenerate
-        # (regeneration would also fail due to network issues)
-        logger.warning(f"⚠️ Could not verify vector store: {str(e)}")
-        logger.info("   Continuing without regeneration (network may be unavailable)")
 
 async def run_incremental_startup_sync():
     """
-    Incremental startup sync - ONLY process NEW profiles.
+    Incremental startup sync - check and regenerate embeddings if needed.
     
     Steps:
-    1. Find employees WITHOUT ProfileCache entries
-    2. Analyze only those new profiles
-    3. Find ProfileCache entries NOT in vector store
-    4. Generate embeddings only for new profiles
+    1. Count total employees with profile data
+    2. Check if vector store exists and has data
+    3. Regenerate embeddings if needed
     """
     try:
         from backend.db.sql_db import SessionLocal
-        from backend.db.models import ProfileCache, Employee
+        from backend.db.models import Employee
         from backend.db.vector_db import get_vector_store
         
         logger.info("🔄 Running incremental startup sync...")
         
         db = SessionLocal()
         try:
-            # STEP 1: Find NEW profiles (without cache)
-            new_profiles = db.query(Employee).outerjoin(
-                ProfileCache, Employee.id == ProfileCache.employee_id
-            ).filter(
-                Employee.resume_text.isnot(None),
-                ProfileCache.id.is_(None)  # NOT in cache
-            ).all()
-            
+            # Count employees with structured profile data
             total_employees = db.query(Employee).filter(
-                Employee.resume_text.isnot(None)
+                Employee.skills.isnot(None),  # At least has skills
             ).count()
-            cached_count = db.query(ProfileCache).count()
             
             logger.info(f"📊 Sync Status:")
-            logger.info(f"   Total employees: {total_employees}")
-            logger.info(f"   Cached profiles: {cached_count}")
-            logger.info(f"   NEW profiles to analyze: {len(new_profiles)}")
+            logger.info(f"   Total employees with profile data: {total_employees}")
             
-            if len(new_profiles) == 0:
-                logger.info("✅ No new profiles - skipping analysis")
-            else:
-                # Analyze only NEW profiles
-                from backend.tools_langchain.bulk_profile_processor_tool import BulkProfileProcessorTool
-                logger.info(f"🔍 Analyzing {len(new_profiles)} NEW profiles...")
-                
-                processor = BulkProfileProcessorTool()
-                result_str = await processor._arun(
-                    mode="new_and_updated",  # This mode already filters correctly
-                    batch_size=10,
-                    limit=0  # No limit, process all new ones
-                )
-                
-                import json
-                result = json.loads(result_str)
-                
-                if result.get("success"):
-                    logger.info(f"✅ Profile analysis complete:")
-                    logger.info(f"   Analyzed: {result.get('profiles_analyzed', 0)}")
-                    logger.info(f"   Time: {result.get('duration_seconds', 0)}s")
-                    
-                    # Refresh cached_count after analysis
-                    cached_count = db.query(ProfileCache).count()
-                else:
-                    logger.error(f"❌ Profile analysis failed: {result.get('error')}")
+            if total_employees == 0:
+                logger.info("ℹ️  No employees with profile data yet")
+                return
             
-            # STEP 2: Incremental vector embedding generation
+            # Check vector embeddings
             logger.info(f"🔍 Checking vector embeddings...")
             
             vector_store = get_vector_store("employee")
             
             if vector_store is None:
-                logger.info("⚠️ Vector store not initialized - creating with all cached profiles")
-                if cached_count > 0:
-                    await _generate_initial_embeddings(db)
-                else:
-                    logger.info("   No cached profiles to embed yet")
+                logger.info("⚠️ Vector store not initialized - creating with all employees")
+                await _generate_initial_embeddings(db)
             else:
-                # Incremental: Check if vector store needs updating
-                if len(new_profiles) > 0:
-                    logger.info(f"⚡ Regenerating vector store with {cached_count} profiles (including {len(new_profiles)} new)")
-                    await _generate_initial_embeddings(db)
-                else:
-                    await _generate_incremental_embeddings(db, vector_store)
+                # Check if vector store has data
+                try:
+                    if hasattr(vector_store, 'index') and vector_store.index is not None:
+                        doc_count = vector_store.index.ntotal
+                        if doc_count > 0:
+                            logger.info(f"✅ Vector store loaded from disk")
+                            logger.info(f"   Documents in vector store: {doc_count}")
+                            logger.info(f"   Total employees: {total_employees}")
+                            
+                            # Check if counts match (within reason)
+                            if abs(doc_count - total_employees) > 5:
+                                logger.info(f"⚠️ Vector store out of sync (diff: {abs(doc_count - total_employees)})")
+                                logger.info("   Consider running: python -m backend.scripts.migrate_embeddings")
+                            else:
+                                logger.info("   ✅ Vector store appears up-to-date")
+                        else:
+                            logger.info("⚠️ Vector store empty - generating all embeddings")
+                            await _generate_initial_embeddings(db)
+                    else:
+                        logger.info("⚠️ Vector store has no index - generating all embeddings")
+                        await _generate_initial_embeddings(db)
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not verify vector store: {str(e)}")
+                    logger.info("   Continuing without regeneration")
         
         finally:
             db.close()

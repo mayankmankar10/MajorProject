@@ -109,6 +109,14 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
             employee_profile = db.query(Employee).filter(Employee.user_id == user.id).first()
             if employee_profile:
                 profile_id = employee_profile.id
+                
+                # Trigger automatic profile analysis (background task)
+                from backend.utils.background_tasks import schedule_background_task
+                from backend.tools_langchain.bulk_profile_processor_tool import analyze_single_employee
+                
+                # Schedule analysis in background (non-blocking)
+                schedule_background_task(analyze_single_employee(employee_profile.id, db))
+                logger.info(f"📊 Profile analysis scheduled for employee {employee_profile.id}")
         
         logger.info(f"New user registered: {user.email} as {user.role.value}")
         

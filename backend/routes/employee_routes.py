@@ -572,6 +572,12 @@ def update_employee_profile(employee_id: int, profile_data: ProfileUpdateSchema)
         
         db.commit()
         
+        # Trigger automatic profile analysis (background task)
+        from backend.utils.background_tasks import schedule_background_task
+        from backend.tools_langchain.bulk_profile_processor_tool import analyze_single_employee
+        schedule_background_task(analyze_single_employee(employee_id, db))
+        logger.info(f"📊 Profile analysis scheduled for employee {employee_id} after profile update")
+        
         return {
             "success": True,
             "message": "Profile updated successfully",
@@ -614,6 +620,12 @@ def add_employee_skills(employee_id: int, skills_data: SkillsSchema):
         progress = update_onboarding_step(db, employee_id, "skills")
         
         db.commit()
+        
+        # Trigger automatic profile analysis (background task)
+        from backend.utils.background_tasks import schedule_background_task
+        from backend.tools_langchain.bulk_profile_processor_tool import analyze_single_employee
+        schedule_background_task(analyze_single_employee(employee_id, db))
+        logger.info(f"📊 Profile analysis scheduled for employee {employee_id} after skills update")
         
         return {
             "success": True,
@@ -750,6 +762,12 @@ async def upload_resume(employee_id: int, file: UploadFile = File(...)):
         progress = update_onboarding_step(db, employee_id, "documents")
         
         db.commit()
+        
+        # Trigger automatic profile analysis (background task)
+        from backend.utils.background_tasks import schedule_background_task
+        from backend.tools_langchain.bulk_profile_processor_tool import analyze_single_employee
+        schedule_background_task(analyze_single_employee(employee_id, db))
+        logger.info(f"📊 Profile analysis scheduled for employee {employee_id} after resume upload")
         
         return {
             "success": True,
@@ -955,6 +973,67 @@ def download_resume_pdf(employee_id: int):
     except Exception as e:
         logger.error(f"PDF generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    finally:
+        db.close()
+
+
+# Profile Analysis Endpoint
+@router.post("/employees/{employee_id}/analyze-profile")
+async def analyze_employee_profile(employee_id: int):
+    """
+    Manually trigger profile analysis for an employee.
+    
+    This endpoint allows on-demand profile processing without waiting for
+    automatic triggers or backend restart.
+    
+    Features:
+    - Uses HybridProfileAnalyzer (Gemini 2.0 Flash + GPT-4o-mini)
+    - Updates ProfileCache with professional summary and recommendations
+    - Runs asynchronously (non-blocking)
+    
+    Returns:
+        {
+            "success": bool,
+            "message": str,
+            "employee_id": int,
+            "professional_summary": str (if successful)
+        }
+    """
+    db = SessionLocal()
+    try:
+        # Verify employee exists
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Import analysis function
+        from backend.tools_langchain.bulk_profile_processor_tool import analyze_single_employee
+        
+        # Run analysis
+        logger.info(f"🔍 Manual profile analysis triggered for employee {employee_id}")
+        result = await analyze_single_employee(employee_id, db)
+        
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=500, 
+                detail=result.get("error", "Profile analysis failed")
+            )
+        
+        return {
+            "success": True,
+            "message": "Profile analysis completed successfully",
+            "employee_id": employee_id,
+            "professional_summary": result.get("professional_summary", "")
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Manual profile analysis error: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Profile analysis failed: {str(e)}"
+        )
     finally:
         db.close()
 

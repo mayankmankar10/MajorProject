@@ -54,23 +54,28 @@ def embed_employees():
                 ProfileCache.employee_id == emp.id
             ).first()
             
-            # Build rich document text
-            text_parts = [
-                f"Name: {emp.full_name}",
-                f"Skills: {emp.skills}" if emp.skills else "",
-                f"Experience: {emp.years_in_hospitality} years" if emp.years_in_hospitality else "",
-            ]
+            # Build structured profile from database columns only
+            text_parts = []
             
-            if cached:
-                text_parts.extend([
-                    f"Summary: {cached.professional_summary}" if cached.professional_summary else "",
-                    f"Top Skills: {', '.join(cached.top_skills or [])}",
-                    f"Recommended Roles: {', '.join(cached.recommended_roles or [])}",
-                    f"Strengths: {', '.join(cached.strengths or [])}"
-                ])
+            # Preferred role
+            if emp.preferred_role:
+                text_parts.append(f"Preferred Role: {emp.preferred_role.value}")
             
-            if emp.resume_text:
-                text_parts.append(f"Resume: {emp.resume_text[:500]}")
+            # Skills (technical)
+            if emp.skills:
+                text_parts.append(f"Skills: {', '.join(emp.skills)}")
+            
+            # Soft skills
+            if emp.soft_skills:
+                text_parts.append(f"Soft Skills: {', '.join(emp.soft_skills)}")
+            
+            # Cuisine experience
+            if emp.cuisine_experience:
+                text_parts.append(f"Cuisine Experience: {', '.join(emp.cuisine_experience)}")
+            
+            # Shift availability
+            if emp.shift_preferences:
+                text_parts.append(f"Available Shifts: {', '.join(emp.shift_preferences)}")
             
             content = "\n".join([p for p in text_parts if p])
             
@@ -78,10 +83,18 @@ def embed_employees():
                 page_content=content,
                 metadata={
                     "id": emp.id,
+                    "employee_id": emp.id,
                     "user_id": emp.user_id,
                     "full_name": emp.full_name,
-                    "skills": emp.skills,
-                    "type": "employee"
+                    "type": "employee",
+                    # Structured fields for filtering
+                    "role": emp.preferred_role.value if emp.preferred_role else None,
+                    "years_in_hospitality": emp.years_in_hospitality or 0,
+                    "food_safety_certified": emp.food_safety_certified or False,
+                    "servsafe_certified": emp.servsafe_certified or False,
+                    "alcohol_service_certified": emp.alcohol_service_certified or False,
+                    "preferred_location": emp.preferred_location,
+                    "certifications": emp.certifications or [],
                 }
             )
             documents.append(doc)
@@ -122,22 +135,28 @@ def embed_jobs():
         
         documents = []
         for job in jobs:
-            # Build rich document text
+            # Build structured job description from database columns only
             text_parts = [
-                f"Title: {job.title}",
-                f"Company: {job.employer.company_name if job.employer else 'Unknown'}",
-                f"Location: {job.location}" if job.location else "",
-                f"Type: {job.job_type}" if job.job_type else "",
-                f"Description: {job.description}" if job.description else "",
-                f"Requirements: {job.requirements}" if job.requirements else "",
-                f"Salary: {job.salary_range}" if job.salary_range else "",
+                f"Position: {job.title}",
             ]
             
-            # Add restaurant-specific fields if available
+            # Job category
+            if hasattr(job, 'job_category') and job.job_category:
+                text_parts.append(f"Category: {job.job_category.value}")
+            
+            # Cuisine type
             if hasattr(job, 'cuisine_type') and job.cuisine_type:
                 text_parts.append(f"Cuisine: {job.cuisine_type}")
+            
+            # Shift type
             if hasattr(job, 'shift_type') and job.shift_type:
                 text_parts.append(f"Shift: {job.shift_type}")
+            
+            # Required skills from requirements JSON
+            if job.requirements and isinstance(job.requirements, dict):
+                skills = job.requirements.get('skills', [])
+                if skills:
+                    text_parts.append(f"Required Skills: {', '.join(skills)}")
             
             content = "\n".join([p for p in text_parts if p])
             
@@ -149,6 +168,7 @@ def embed_jobs():
                     "company_name": job.employer.company_name if job.employer else "Unknown",
                     "location": job.location,
                     "job_type": job.job_type,
+                    "job_category": job.job_category.value if hasattr(job, 'job_category') and job.job_category else None,
                     "salary_range": job.salary_range,
                     "type": "job"
                 }

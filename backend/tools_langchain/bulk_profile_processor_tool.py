@@ -16,6 +16,129 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================
+# Standalone Profile Analysis Function (Reusable)
+# ============================================================
+
+async def analyze_single_employee(employee_id: int, db: Session) -> dict:
+    """
+    Analyze a single employee profile using HybridProfileAnalyzer.
+    Updates ProfileCache and employee.profile_summary.
+    
+    This is a standalone function that can be called from:
+    - Automatic hooks (registration, profile update, resume upload)
+    - Manual API endpoints
+    - Bulk processing tools
+    
+    Args:
+        employee_id: ID of employee to analyze
+        db: SQLAlchemy database session
+        
+    Returns:
+        {
+            "success": bool,
+            "employee_id": int,
+            "professional_summary": str,
+            "error": str (if failed)
+        }
+    """
+    from backend.tools_langchain.hybrid_profile_analyzer import HybridProfileAnalyzer
+    
+    try:
+        # Get employee
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            return {
+                "success": False,
+                "employee_id": employee_id,
+                "error": "Employee not found"
+            }
+        
+        # Prepare profile data
+        profile_data = {
+            "employee_id": employee.id,
+            "resume_text": employee.resume_text or "",
+            "skills": employee.skills or [],
+            "years_in_hospitality": employee.years_in_hospitality or 0
+        }
+        
+        # Run analysis using HybridProfileAnalyzer
+        analyzer = HybridProfileAnalyzer()
+        result_json = await analyzer._arun(json.dumps(profile_data))
+        result = json.loads(result_json)
+        
+        if not result.get("success"):
+            return {
+                "success": False,
+                "employee_id": employee_id,
+                "error": result.get("error", "Analysis failed")
+            }
+        
+        # Extract analysis data
+        analysis = result.get("analysis", {})
+        professional_summary = analysis.get("summary", "")
+        strengths = analysis.get("strengths", [])
+        recommended_roles = analysis.get("recommended_roles", [])
+        
+        # Update or create cache entry
+        cache_entry = db.query(ProfileCache).filter(
+            ProfileCache.employee_id == employee.id
+        ).first()
+        
+        if cache_entry:
+            # Update existing
+            cache_entry.professional_summary = professional_summary
+            cache_entry.experience_level = result.get("experience_level", "entry")
+            cache_entry.top_skills = strengths
+            cache_entry.recommended_roles = recommended_roles
+            cache_entry.strengths = strengths
+            cache_entry.analyzed_at = datetime.utcnow()
+            cache_entry.is_stale = False
+        else:
+            # Create new
+            cache_entry = ProfileCache(
+                employee_id=employee.id,
+                professional_summary=professional_summary,
+                experience_level=result.get("experience_level", "entry"),
+                top_skills=strengths,
+                recommended_roles=recommended_roles,
+                strengths=strengths,
+                analyzed_at=datetime.utcnow(),
+                is_stale=False
+            )
+            db.add(cache_entry)
+        
+        # Update employee metadata
+        employee.last_profile_analysis = datetime.utcnow()
+        employee.profile_summary = professional_summary[:500]
+        
+        # Commit changes
+        db.commit()
+        
+        logger.info(f"✅ Profile analysis complete for employee {employee_id}")
+        
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "professional_summary": professional_summary
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Profile analysis failed for employee {employee_id}: {e}", exc_info=True)
+        db.rollback()
+        return {
+            "success": False,
+            "employee_id": employee_id,
+            "error": str(e)
+        }
+
+
+# ============================================================
+# Pydantic Models and Tool Class
+# ============================================================
+
+
 class BulkProfileProcessorInput(BaseModel):
     """Input schema for bulk profile processing."""
     mode: str = Field(
@@ -135,7 +258,6 @@ class BulkProfileProcessorTool(BaseTool):
                 "employee_id": employee.id,
                 "resume_text": employee.resume_text or "",
                 "skills": employee.skills or [],
-                "experience_years": employee.experience_years or 0,
                 "years_in_hospitality": employee.years_in_hospitality or 0
             }
             

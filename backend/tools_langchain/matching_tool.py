@@ -210,7 +210,50 @@ class MatchingTool(BaseTool):
                 bonus += 5
                 logger.debug(f"  +5 (job type: {job.job_type})")
         
-        return min(bonus, 50)  # Cap at 50 bonus points
+        # Bonus 7: Location match (+10 exact, +5 partial)
+        if job and job.location and employee.preferred_location:
+            job_loc = job.location.lower().strip()
+            emp_loc = employee.preferred_location.lower().strip()
+            
+            if job_loc == emp_loc:
+                # Exact match
+                bonus += 10
+                logger.debug(f"  +10 (location exact match: {job.location})")
+            elif job_loc in emp_loc or emp_loc in job_loc:
+                # Partial match (e.g., "Mumbai" in "Mumbai, Maharashtra")
+                bonus += 5
+                logger.debug(f"  +5 (location partial match: {job.location} ~ {employee.preferred_location})")
+            else:
+                # No match - no penalty, just no bonus
+                logger.debug(f"  +0 (location mismatch: {job.location} != {employee.preferred_location})")
+        
+        # Penalty: Salary mismatch (-10 points)
+        if job and job.salary_range and employee.expected_salary_min:
+            # Parse job salary range (e.g., "50000-80000" or "50k-80k")
+            try:
+                salary_parts = job.salary_range.replace('k', '000').replace('K', '000').split('-')
+                if len(salary_parts) == 2:
+                    job_min = int(salary_parts[0].strip())
+                    job_max = int(salary_parts[1].strip())
+                    
+                    # Check if employee expectations overlap with job offer
+                    emp_min = employee.expected_salary_min
+                    emp_max = employee.expected_salary_max if employee.expected_salary_max else emp_min * 2  # Default max if not set
+                    
+                    # Overlap check: does employee's range overlap with job's range?
+                    # Ranges overlap if: emp_min <= job_max AND emp_max >= job_min
+                    if emp_min <= job_max and emp_max >= job_min:
+                        # Ranges overlap - good match, no penalty
+                        logger.debug(f"  +0 (salary overlap: job {job_min}-{job_max}, employee expects {emp_min}-{emp_max})")
+                    else:
+                        # No overlap - employee expects too much or too little
+                        bonus -= 10
+                        logger.debug(f"  -10 (salary mismatch: job {job_min}-{job_max}, employee expects {emp_min}-{emp_max})")
+            except (ValueError, AttributeError) as e:
+                # Couldn't parse salary, skip penalty
+                logger.debug(f"  Skipping salary check (parse error: {e})")
+        
+        return min(max(bonus, 0), 60)  # Cap at 60 bonus points (increased from 50 to accommodate location+salary)
     
     async def _arun(self, query_text: str, match_type: str, top_k: int = 5, job_id: int = None, shift_requirements: list = None, role: str = None) -> str:
         """Async version - delegates to sync _run."""
@@ -507,7 +550,8 @@ class MatchingTool(BaseTool):
                                 requirements=requirements_dict if not job else None
                             )
                         
-                        # Total score: base (40) + role_match (20) + keywords (15) + restaurant bonus (50) = max 125, capped at 100
+                        # Total score: base (40) + role_match (20) + keywords (15) + restaurant bonus (60) = max 135, capped at 100
+                        # Restaurant bonus breakdown: certs(15) + cuisine(15) + shift(5) + exp(10) + service(10) + job_type(5) + location(10) - salary_penalty(10) = 60 max
                         final_score = min(base_score + role_match_bonus + keyword_bonus + bonus_score, 100)
                         
                         # Convert to 0-1 scale for threshold comparison

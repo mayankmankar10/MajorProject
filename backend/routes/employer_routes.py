@@ -49,6 +49,8 @@ class JobCreateRequest(BaseModel):
     job_category: str  # waiter, cook, chef, etc.
     cuisine_type: str | None = None  # Only for cook/chef
     quantity_needed: int = 1
+    requires_food_safety: bool = True
+    requires_alcohol_cert: bool = False
 
 
 class FindPayload(BaseModel):
@@ -225,8 +227,21 @@ async def create_job_posting(
         # Create the description using the template format
         description = f"Seeking a skilled and experienced {payload.title} to join our team in the {payload.job_category} category{cuisine_part}. This position offers {shift_part} availability. The ideal candidate will demonstrate expertise in {', '.join(payload.skills)}, contributing to an exceptional guest experience and maintaining the highest standards of hospitality service."
         
+        # Generate enhanced_description from structured columns for semantic matching
+        enhanced_parts = [
+            f"Position: {payload.title}",
+            f"Category: {payload.job_category}",
+        ]
+        if payload.cuisine_type:
+            enhanced_parts.append(f"Cuisine: {payload.cuisine_type}")
+        enhanced_parts.append(f"Shift: {payload.shift_type}")
+        enhanced_parts.append(f"Required Skills: {', '.join(payload.skills)}")
+        
+        enhanced_description = "\\n".join(enhanced_parts)
+        
         # Format salary range for display
         salary_range = f"Rs. {payload.salary_min:,} - {payload.salary_max:,}"
+
         
         # Create requirements JSON
         requirements = {
@@ -253,8 +268,8 @@ async def create_job_posting(
         new_job = Job(
             employer_id=employer.id,
             title=payload.title,
-            description=description,  # Professional template description
-            enhanced_description=description,  # Same description for consistency
+            description=description,  # Professional template description for display
+            enhanced_description=enhanced_description,  # Structured description for semantic matching
             requirements=requirements,
             location=payload.location,
             job_type=payload.job_type,
@@ -267,7 +282,9 @@ async def create_job_posting(
             quantity_filled=0,
             match_score_threshold=0.5,  # Set to 0.5 as specified
             is_active=True,
-            auto_fill_on_decline=False
+            auto_fill_on_decline=False,
+            requires_food_safety=payload.requires_food_safety,
+            requires_alcohol_cert=payload.requires_alcohol_cert
         )
         
         db.add(new_job)
